@@ -437,7 +437,7 @@ export default function AppSidebar() {
                 <DropdownMenuItem
                   className="cursor-pointer text-sm"
                   onClick={() => {
-                    console.log("Setting");
+                    router.push("/settings");
                   }}
                 >
                   <Settings className="size-4" />
@@ -449,7 +449,7 @@ export default function AppSidebar() {
                 <DropdownMenuItem
                   className="cursor-pointer text-sm"
                   onClick={() => {
-                    console.log("API key");
+                    router.push("/profile/model-api-keys");
                   }}
                 >
                   <KeyRound className="size-4" />
