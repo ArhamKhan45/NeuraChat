@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
   History,
+  KeyRound,
   LogOut,
   MessageCircle,
   MoreHorizontal,
@@ -39,7 +40,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import Link from "next/link";
 
 type ChatHistoryItem = {
   id: string;
@@ -434,7 +434,12 @@ export default function AppSidebar() {
                 sideOffset={8}
                 className="w-48"
               >
-                <DropdownMenuItem className="cursor-pointer text-sm">
+                <DropdownMenuItem
+                  className="cursor-pointer text-sm"
+                  onClick={() => {
+                    router.push("/settings");
+                  }}
+                >
                   <Settings className="size-4" />
                   Settings
                 </DropdownMenuItem>
@@ -442,8 +447,23 @@ export default function AppSidebar() {
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem
+                  className="cursor-pointer text-sm"
+                  onClick={() => {
+                    router.push("/profile/model-api-keys");
+                  }}
+                >
+                  <KeyRound className="size-4" />
+                  Models & API Keys
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
                   variant="destructive"
                   className="cursor-pointer text-sm"
+                  onClick={() => {
+                    console.log("Logout");
+                  }}
                 >
                   <LogOut className="size-4" />
                   Log out
