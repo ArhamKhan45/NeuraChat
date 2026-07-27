@@ -1,25 +1,17 @@
-from typing import Annotated
-
 from fastapi import (
     APIRouter,
-    Depends,
     HTTPException,
     status,
 )
+from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.features.user import TokenResponse, UserCreate, UserResponse,UserModel
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
-
-
-from sqlalchemy.exc import (
-    IntegrityError,
-    SQLAlchemyError,
+from app.features.user import (
+    UserCreate,
+    UserModel,
+    UserResponse,
 )
-
 from utils.dependency import DatabaseSession
-
-
 
 
 router = APIRouter(
@@ -28,35 +20,44 @@ router = APIRouter(
 )
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login_user():
-    pass
-
-
-@router.post("/register",response_model=UserResponse,status_code=status.HTTP_201_CREATED)
-async def register_user(
+@router.post(
+    "/add-user-to-db",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_user_to_db(
     user_data: UserCreate,
-    db: DatabaseSession ) -> UserModel:
+    db: DatabaseSession,
+) -> UserModel:
+    """
+    Add a Clerk-authenticated user to the application database.
+
+    Clerk is responsible for authentication. This endpoint only stores
+    the Clerk user ID and basic profile information in PostgreSQL.
+    """
+
     try:
-        statement= select(UserModel).where(
-            UserModel.email == str(user_data.email)
+        statement = select(UserModel).where(
+            or_(
+                UserModel.clerk_id == user_data.clerk_id,
+                UserModel.email == str(user_data.email),
+            )
         )
 
-        result=await db.execute(statement)
-
+        result = await db.execute(statement)
         existing_user = result.scalar_one_or_none()
 
         if existing_user is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="A user with this email already exists",
+                detail="User already exists",
             )
 
         user = UserModel(
-                clerk_id=user_data.clerk_id or "user_3GUieW91ZmxFzwGrNDsPvCh5xAb",
-                name=user_data.name,
-                email=str(user_data.email),
-                )
+            clerk_id=user_data.clerk_id,
+            name=user_data.name,
+            email=str(user_data.email),
+        )
 
         db.add(user)
 
@@ -65,16 +66,15 @@ async def register_user(
 
         return user
 
-        
     except HTTPException:
         raise
-    
+
     except IntegrityError as error:
         await db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+            detail="A user with this Clerk ID or email already exists",
         ) from error
 
     except SQLAlchemyError as error:
@@ -83,12 +83,4 @@ async def register_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error while creating user",
-        ) from error
-
-    except Exception as error:
-        await db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error while creating user",
         ) from error
