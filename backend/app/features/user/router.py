@@ -88,8 +88,16 @@ async def add_user_to_db(
 
 
 
-@router.get("/me")
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def get_my_profile(
     current_user: CurrentUser,
 ) -> UserModel:
+    """
+    Return the currently authenticated user's database profile.
+    """
+
     return current_user

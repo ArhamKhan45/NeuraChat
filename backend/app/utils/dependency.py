@@ -1,18 +1,16 @@
 import asyncio
 import os
-from typing import Annotated, Any
+from typing import Annotated
 
-import jwt
+import httpx
+from clerk_backend_api import Clerk
+from clerk_backend_api.security.types import AuthenticateRequestOptions
 from fastapi import (
     Depends,
     HTTPException,
+    Request,
     status,
 )
-from fastapi.security import (
-    HTTPAuthorizationCredentials,
-    HTTPBearer,
-)
-from jwt import PyJWKClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,35 +25,26 @@ DatabaseSession = Annotated[
 ]
 
 
-bearer_scheme = HTTPBearer(
-    auto_error=False,
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
+CLERK_AUTHORIZED_PARTY = os.getenv(
+    "CLERK_AUTHORIZED_PARTY",
+    "http://localhost:3000",
 )
 
 
-CLERK_ISSUER = os.getenv("CLERK_ISSUER")
-CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
-CLERK_AUTHORIZED_PARTY = os.getenv("CLERK_AUTHORIZED_PARTY")
-
-
-if not CLERK_ISSUER:
+if not CLERK_SECRET_KEY:
     raise RuntimeError(
-        "CLERK_ISSUER environment variable is not configured"
-    )
-
-if not CLERK_JWKS_URL:
-    raise RuntimeError(
-        "CLERK_JWKS_URL environment variable is not configured"
+        "CLERK_SECRET_KEY environment variable is not configured"
     )
 
 
-jwks_client = PyJWKClient(
-    CLERK_JWKS_URL,
-    cache_keys=True,
+clerk = Clerk(
+    bearer_auth=CLERK_SECRET_KEY,
 )
 
 
-def create_authentication_error() -> HTTPException:
-    """Create a standard authentication error response."""
+def authentication_error() -> HTTPException:
+    """Return a standard Clerk authentication error."""
 
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,91 +55,64 @@ def create_authentication_error() -> HTTPException:
     )
 
 
-def verify_clerk_token(token: str) -> dict[str, Any]:
+def authenticate_clerk_request(
+    request: Request,
+):
     """
-    Verify a Clerk session token and return its payload.
+    Authenticate a FastAPI request using Clerk's Python backend SDK.
 
-    The token signature is verified using Clerk's JWKS endpoint.
-    The issuer, expiration time, and authorized frontend are also checked.
+    The FastAPI request is converted into an httpx request because Clerk's
+    authenticate_request method expects an HTTP request-like object.
     """
 
-    signing_key = jwks_client.get_signing_key_from_jwt(token)
-
-    payload: dict[str, Any] = jwt.decode(
-        token,
-        signing_key.key,
-        algorithms=["RS256"],
-        issuer=CLERK_ISSUER,
-        options={
-            "verify_aud": False,
-            "require": [
-                "exp",
-                "iat",
-                "iss",
-                "sub",
-            ],
-        },
+    httpx_request = httpx.Request(
+        method=request.method,
+        url=str(request.url),
+        headers=dict(request.headers),
     )
 
-    authorized_party = payload.get("azp")
-
-    if (
-        CLERK_AUTHORIZED_PARTY
-        and authorized_party != CLERK_AUTHORIZED_PARTY
-    ):
-        raise jwt.InvalidTokenError(
-            "Invalid authorized party"
-        )
-
-    return payload
+    return clerk.authenticate_request(
+        httpx_request,
+        AuthenticateRequestOptions(
+            authorized_parties=[
+                CLERK_AUTHORIZED_PARTY,
+            ],
+        ),
+    )
 
 
 async def get_current_user(
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None,
-        Depends(bearer_scheme),
-    ],
+    request: Request,
     db: DatabaseSession,
 ) -> UserModel:
     """
-    Verify the Clerk session token and return the local database user.
+    Authenticate the request with Clerk and return the local database user.
 
-    Clerk authenticates the request. The Clerk user ID from the token's
-    `sub` claim is used to find the corresponding PostgreSQL user.
+    Clerk verifies the session token. The Clerk user ID is obtained from the
+    verified token payload and matched against the users table.
     """
 
-    authentication_error = create_authentication_error()
-
-    if credentials is None:
-        raise authentication_error
-
-    if credentials.scheme.lower() != "bearer":
-        raise authentication_error
-
     try:
-        payload = await asyncio.to_thread(
-            verify_clerk_token,
-            credentials.credentials,
+        request_state = await asyncio.to_thread(
+            authenticate_clerk_request,
+            request,
         )
 
-        clerk_id = payload.get("sub")
+    except Exception as error:
+        raise authentication_error() from error
 
-        if not isinstance(clerk_id, str) or not clerk_id:
-            raise authentication_error
+    if not request_state.is_signed_in:
+        raise authentication_error()
 
-    except HTTPException:
-        raise
+    payload = request_state.payload
 
-    except (
-        jwt.ExpiredSignatureError,
-        jwt.InvalidIssuerError,
-        jwt.InvalidTokenError,
-        jwt.PyJWKClientError,
-        KeyError,
-        TypeError,
-        ValueError,
-    ) as error:
-        raise authentication_error from error
+    if payload is None:
+        raise authentication_error()
+
+    clerk_id = payload.get("sub")
+
+    if not isinstance(clerk_id, str) or not clerk_id:
+        raise authentication_error()
 
     try:
         statement = select(UserModel).where(
@@ -169,7 +131,7 @@ async def get_current_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Authenticated Clerk user does not exist in the database",
+            detail="Clerk user is not registered in the application database",
         )
 
     return user
