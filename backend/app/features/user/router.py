@@ -6,12 +6,13 @@ from fastapi import (
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+
 from app.features.user import (
     UserCreate,
     UserModel,
     UserResponse,
 )
-from utils.dependency import DatabaseSession
+from utils.dependency import DatabaseSession ,CurrentUser
 
 
 router = APIRouter(
@@ -84,3 +85,11 @@ async def add_user_to_db(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error while creating user",
         ) from error
+
+
+
+@router.get("/me")
+async def get_my_profile(
+    current_user: CurrentUser,
+) -> UserModel:
+    return current_user
