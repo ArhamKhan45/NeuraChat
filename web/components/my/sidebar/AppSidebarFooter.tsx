@@ -88,7 +88,7 @@ const AppSidebarFooter = () => {
                 sideOffset={8}
                 className="w-48"
               >
-                <DropdownMenuItem
+                {/* <DropdownMenuItem
                   className="cursor-pointer text-sm"
                   onClick={() => router.push("/settings")}
                 >
@@ -96,7 +96,7 @@ const AppSidebarFooter = () => {
                   Settings
                 </DropdownMenuItem>
 
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator /> */}
 
                 <DropdownMenuItem
                   className="cursor-pointer text-sm"

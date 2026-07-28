@@ -3,7 +3,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import AppSidebar from "@/components/my/AppSidebar";
+import AppSidebar from "@/components/my/sidebar/AppSidebar";
 import { ModeToggle } from "@/components/theme-toggle";
 import { Menu } from "lucide-react";
 import ChatScreen from "@/components/my/chat/ChatScreen";

@@ -35,7 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import AppSidebarFooter from "./sidebar/AppSidebarFooter";
+import AppSidebarFooter from "./AppSidebarFooter";
 
 type ChatHistoryItem = {
   id: string;

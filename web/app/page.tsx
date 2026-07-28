@@ -12,7 +12,7 @@ export default async function HomePage() {
   return (
     <>
       <SyncUser />
-      <LandingScreen />;
+      <LandingScreen />
     </>
   );
 }
