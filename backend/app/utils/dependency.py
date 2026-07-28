@@ -6,6 +6,15 @@ from clerk_backend_api import Clerk
 from clerk_backend_api.security.types import AuthenticateRequestOptions
 from fastapi import Depends, HTTPException, Request, status
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+from app.config.database import get_db
+
+DatabaseSession = Annotated[
+    AsyncSession,
+    Depends(get_db),
+]
 
 CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
 

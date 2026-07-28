@@ -4,21 +4,16 @@ import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
-  ChevronsUpDown,
   History,
-  KeyRound,
-  LogOut,
   MessageCircle,
   MoreHorizontal,
   PenSquare,
-  Settings,
   Trash2,
 } from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -40,6 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import AppSidebarFooter from "./sidebar/AppSidebarFooter";
 
 type ChatHistoryItem = {
   id: string;
@@ -59,21 +55,6 @@ const INITIAL_HISTORY: ChatHistoryItem[] = [
   { id: "10", title: "Fix authentication callback" },
 ];
 
-const USER = {
-  name: "Alex Kumar",
-  email: "alex@example.com",
-};
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 const collapsedButtonClass =
   "group-data-[collapsible=icon]:mx-auto " +
   "group-data-[collapsible=icon]:size-10! " +
@@ -81,7 +62,7 @@ const collapsedButtonClass =
   "group-data-[collapsible=icon]:gap-0 " +
   "group-data-[collapsible=icon]:p-0!";
 
-export default function AppSidebar() {
+export default function AppSidebar({ id }: { id?: string }) {
   const router = useRouter();
   const { state, isMobile } = useSidebar();
 
@@ -288,7 +269,7 @@ export default function AppSidebar() {
 
                         <DropdownMenuSeparator />
 
-                        <div className="max-h-[420px] space-y-2.5 overflow-y-auto py-2">
+                        <div className="max-h-105 space-y-2.5 overflow-y-auto py-2">
                           {dropdownHistory.length > 0 ? (
                             dropdownHistory.map((item) => (
                               <div
@@ -398,81 +379,7 @@ export default function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-2 group-data-[collapsible=icon]:items-center">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuButton
-                    size="lg"
-                    tooltip={USER.name}
-                    className={`gap-2 ${collapsedButtonClass}`}
-                  >
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-sm font-semibold">
-                      {initials(USER.name)}
-                    </span>
-
-                    <span className="flex min-w-0 flex-1 flex-col text-left group-data-[collapsible=icon]:hidden">
-                      <span className="truncate text-sm font-medium">
-                        {USER.name}
-                      </span>
-
-                      <span className="truncate text-sm text-muted-foreground">
-                        {USER.email}
-                      </span>
-                    </span>
-
-                    <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                  </SidebarMenuButton>
-                }
-              />
-
-              <DropdownMenuContent
-                side="top"
-                align="end"
-                sideOffset={8}
-                className="w-48"
-              >
-                <DropdownMenuItem
-                  className="cursor-pointer text-sm"
-                  onClick={() => {
-                    router.push("/settings");
-                  }}
-                >
-                  <Settings className="size-4" />
-                  Settings
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem
-                  className="cursor-pointer text-sm"
-                  onClick={() => {
-                    router.push("/profile/model-api-keys");
-                  }}
-                >
-                  <KeyRound className="size-4" />
-                  Models & API Keys
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem
-                  variant="destructive"
-                  className="cursor-pointer text-sm"
-                  onClick={() => {
-                    console.log("Logout");
-                  }}
-                >
-                  <LogOut className="size-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+      <AppSidebarFooter />
     </Sidebar>
   );
 }

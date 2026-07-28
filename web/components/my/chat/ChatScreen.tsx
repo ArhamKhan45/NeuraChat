@@ -9,9 +9,13 @@ import ChatMessages, {
 
 interface ChatScreenProps {
   initialMessages?: ChatMessage[];
+  chatId?: string;
 }
 
-export default function ChatScreen({ initialMessages = [] }: ChatScreenProps) {
+export default function ChatScreen({
+  initialMessages = [],
+  chatId,
+}: ChatScreenProps) {
   const [messages, setMessages] =
     React.useState<ChatMessage[]>(initialMessages);
 
