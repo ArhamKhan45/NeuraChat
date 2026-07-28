@@ -12,7 +12,7 @@ from app.features.user import (
     UserModel,
     UserResponse,
 )
-from utils.dependency import DatabaseSession ,CurrentUser
+from utils.dependency import DatabaseSession ,ProtectedUser
 
 
 router = APIRouter(
@@ -88,16 +88,38 @@ async def add_user_to_db(
 
 
 
+
 @router.get(
     "/me",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
 )
 async def get_my_profile(
-    current_user: CurrentUser,
+    clerk_id: ProtectedUser,
+    db: DatabaseSession,
 ) -> UserModel:
     """
-    Return the currently authenticated user's database profile.
+    Return the authenticated Clerk user's database profile.
     """
 
-    return current_user
+    try:
+        statement = select(UserModel).where(
+            UserModel.clerk_id == clerk_id
+        )
+
+        result = await db.execute(statement)
+        user = result.scalar_one_or_none()
+
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while retrieving user profile",
+        ) from error
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile does not exist in the database",
+        )
+
+    return user
