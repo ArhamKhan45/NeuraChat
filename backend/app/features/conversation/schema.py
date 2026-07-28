@@ -20,13 +20,6 @@ class ConversationCreate(BaseModel):
     )
 
 
-class ConversationUpdate(BaseModel):
-    """Request schema for updating a conversation title."""
-
-    title: str = Field(
-        min_length=1,
-        max_length=255,
-    )
 
 
 class ConversationResponse(BaseModel):
