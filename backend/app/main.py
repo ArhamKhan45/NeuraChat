@@ -10,7 +10,13 @@ from app.config.database import database_engine
 from app.features.model_configuration import (
     model_configuration_router,
 )
+from app.features.conversation import (
+conversation_router
+)
 from app.features.user.router import auth_router
+from app.features.messages import (
+    chat_message_router,
+)
 from app.helpers import Base
 
 
@@ -43,8 +49,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(model_configuration_router)
-
-
+app.include_router(chat_message_router)
+app.include_router(conversation_router)
 @app.get("/")
 async def health() -> dict[str, str]:
     """Return the API health status."""

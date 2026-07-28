@@ -91,7 +91,7 @@ export default function ChatScreen({
   const handleStop = () => {
     abortControllerRef.current?.abort();
   };
-
+  console.log(messages);
   return (
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div

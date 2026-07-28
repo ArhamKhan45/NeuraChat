@@ -80,7 +80,7 @@ export default function ChatPrompt({
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="flex min-h-14 items-end gap-1 rounded-[28px] border border-border bg-muted px-2 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
-        <Button
+        {/* <Button
           type="button"
           variant="ghost"
           size="icon"
@@ -89,7 +89,7 @@ export default function ChatPrompt({
           className="size-10 shrink-0 rounded-full bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground"
         >
           <Paperclip className="size-5" />
-        </Button>
+        </Button> */}
 
         <textarea
           ref={textareaRef}
