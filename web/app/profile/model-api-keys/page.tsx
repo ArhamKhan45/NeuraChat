@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getToken } from "@clerk/nextjs";
 
 interface Provider {
   value: string;
@@ -165,15 +166,24 @@ export default function ModelAPIKeys() {
     }
 
     setIsSaving(true);
-    console.log("hello");
+
     const loadingToast = toast.loading("Saving model configurations...");
 
     try {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error(
+          "Authentication token was not found. Please sign in again.",
+        );
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/model-configurations`,
         {
-          method: "POST",
+          method: "PATCH",
           headers: {
+            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -196,14 +206,20 @@ export default function ModelAPIKeys() {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(data?.detail ?? "Could not save model configurations.");
+        const errorMessage =
+          typeof data?.detail === "string"
+            ? data.detail
+            : data?.detail
+              ? JSON.stringify(data.detail)
+              : `Could not save model configurations. Status: ${response.status}`;
+
+        throw new Error(errorMessage);
       }
 
       toast.success("Model configurations saved successfully.", {
         id: loadingToast,
       });
     } catch (error) {
-      console.log("hello");
       toast.error(
         error instanceof Error
           ? error.message

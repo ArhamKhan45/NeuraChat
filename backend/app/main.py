@@ -4,7 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.database import database_engine
-from app.features.user.model import UserModel
+from app.features.user import (
+    UserModel
+)
+
+from app.features.model_configuration import (
+    model_configuration_router,
+)
+
+
 from app.features.user.router import auth_router
 from app.helpers import Base
 
@@ -38,6 +46,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(model_configuration_router)
 
 
 @app.get("/")
