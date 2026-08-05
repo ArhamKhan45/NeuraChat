@@ -1,12 +1,6 @@
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import AppSidebar from "@/components/my/sidebar/AppSidebar";
-import { ModeToggle } from "@/components/theme-toggle";
-import { Menu } from "lucide-react";
 import LandingPage from "@/components/my/LandingScreen";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
 interface ChatPageProps {
   params: Promise<{
