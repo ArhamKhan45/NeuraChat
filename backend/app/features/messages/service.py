@@ -1,6 +1,7 @@
 """Services for generating assistant responses."""
 
 from typing import Any
+import logging
 
 from sqlalchemy import select
 
@@ -90,7 +91,13 @@ async def generate_assistant_reply(
         }
     )
 
-    return get_final_response(supervisor_result)
+    try:
+        return get_final_response(supervisor_result)
+
+    except Exception as error:
+        logging.exception("Error extracting final response from supervisor_result: %r", error)
+        # Re-raise so the router can handle and return a 500
+        raise
 
 
 def get_final_response(

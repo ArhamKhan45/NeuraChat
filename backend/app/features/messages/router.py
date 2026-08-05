@@ -19,6 +19,7 @@ from fastapi import (
     HTTPException,
     status,
 )
+import logging
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -214,12 +215,10 @@ async def send_conversation_message(
     except Exception as error:
         await db.rollback()
 
-        print(
-            "ASSISTANT RESPONSE ERROR:",
-            repr(error),
-        )
+        logging.exception("ASSISTANT RESPONSE ERROR: %s", error)
 
+        # Surface the error message in the response detail to help debugging
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate assistant response",
+            detail=f"Failed to generate assistant response: {error}",
         ) from error
