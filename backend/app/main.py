@@ -1,8 +1,10 @@
 """FastAPI application entry point."""
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,10 +19,41 @@ from app.jobs.health_check import (
     stop_health_check_scheduler,
 )
 
+load_dotenv()
+
+
+def get_allowed_origins() -> list[str]:
+    """Return allowed frontend origins from environment variables."""
+
+    configured_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+
+    origins = [
+        origin.strip().rstrip("/")
+        for origin in configured_origins.split(",")
+        if origin.strip()
+    ]
+
+    default_origins = [
+        "http://localhost:3000",
+    ]
+
+    if not origins:
+        origins = default_origins
+
+    frontend_url = os.getenv("FRONTEND_URL")
+
+    if frontend_url:
+        normalized_frontend_url = frontend_url.strip().rstrip("/")
+
+        if normalized_frontend_url not in origins:
+            origins.append(normalized_frontend_url)
+
+    return origins
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Initialize application resources and clean them up on shutdown."""
+    """Initialize and clean up application resources."""
 
     async with database_engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -36,14 +69,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="NeuroChat API",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-    ],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,7 +89,7 @@ app.include_router(conversation_router)
 
 @app.get("/")
 async def home() -> dict[str, str]:
-    """Return the root API status."""
+    """Return the API root status."""
 
     return {
         "message": "Backend is running!",
