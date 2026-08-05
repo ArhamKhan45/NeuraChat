@@ -34,11 +34,11 @@ export interface ProviderConfiguration {
 }
 
 export const PROVIDERS: ProviderConfiguration[] = [
-  {
-    label: "OpenAI",
-    value: "openai",
-    models: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"],
-  },
+  // {
+  //   label: "OpenAI",
+  //   value: "openai",
+  //   models: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"],
+  // },
   {
     label: "Groq",
     value: "groq",
@@ -49,16 +49,16 @@ export const PROVIDERS: ProviderConfiguration[] = [
     value: "google",
     models: ["gemini-2.5-flash", "gemini-2.5-pro"],
   },
-  {
-    label: "Anthropic",
-    value: "anthropic",
-    models: ["claude-sonnet-4", "claude-3-5-haiku-latest"],
-  },
-  {
-    label: "OpenAI Compatible",
-    value: "openai-compatible",
-    models: ["custom-model"],
-  },
+  // {
+  //   label: "Anthropic",
+  //   value: "anthropic",
+  //   models: ["claude-sonnet-4", "claude-3-5-haiku-latest"],
+  // },
+  // {
+  //   label: "OpenAI Compatible",
+  //   value: "openai-compatible",
+  //   models: ["custom-model"],
+  // },
 ];
 
 export function createEmptyModel(): ModelFormState {
