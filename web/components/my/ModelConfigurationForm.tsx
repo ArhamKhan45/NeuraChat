@@ -1,6 +1,13 @@
 "use client";
 
-import { Bot, CheckCircle2, Eye, EyeOff, MessageSquare } from "lucide-react";
+import {
+  Bot,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Link2,
+  MessageSquare,
+} from "lucide-react";
 
 import {
   Card,
@@ -94,9 +101,9 @@ export default function ModelConfigurationForm({
         <div className="space-y-2">
           <Label htmlFor={`${type}-provider`}>
             Provider
-            {!isChat && (
+            {!isChat ? (
               <span className="ml-1 text-muted-foreground">(optional)</span>
-            )}
+            ) : null}
           </Label>
 
           <Select value={value.provider} onValueChange={handleProviderChange}>
@@ -117,9 +124,9 @@ export default function ModelConfigurationForm({
         <div className="space-y-2">
           <Label htmlFor={`${type}-model`}>
             Model
-            {!isChat && (
+            {!isChat ? (
               <span className="ml-1 text-muted-foreground">(optional)</span>
-            )}
+            ) : null}
           </Label>
 
           <Select
@@ -146,11 +153,40 @@ export default function ModelConfigurationForm({
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor={`${type}-model-url`}>
+            Model URL
+            <span className="ml-1 text-muted-foreground">(optional)</span>
+          </Label>
+
+          <div className="relative">
+            <Link2 className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+
+            <Input
+              id={`${type}-model-url`}
+              type="url"
+              value={value.modelUrl}
+              onChange={(event) => {
+                updateValue({
+                  modelUrl: event.target.value,
+                });
+              }}
+              placeholder="https://api.example.com/v1"
+              className="h-10 pl-9"
+              autoComplete="url"
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Use this for custom or OpenAI-compatible API endpoints.
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor={`${type}-api-key`}>
             API key
-            {!isChat && (
+            {!isChat ? (
               <span className="ml-1 text-muted-foreground">(optional)</span>
-            )}
+            ) : null}
           </Label>
 
           <div className="relative">
@@ -175,7 +211,7 @@ export default function ModelConfigurationForm({
                   showApiKey: !value.showApiKey,
                 });
               }}
-              className="absolute right-0 top-0 flex size-10 items-center justify-center text-muted-foreground hover:text-foreground"
+              className="absolute right-0 top-0 flex size-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
               aria-label={value.showApiKey ? "Hide API key" : "Show API key"}
             >
               {value.showApiKey ? (

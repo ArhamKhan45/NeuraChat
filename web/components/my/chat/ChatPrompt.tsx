@@ -4,6 +4,7 @@ import * as React from "react";
 import { ArrowUp, Paperclip, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useConversations } from "@/hooks/useConversations";
 
 interface ChatPromptProps {
   onSubmit?: (prompt: string) => void | Promise<void>;
@@ -20,7 +21,7 @@ export default function ChatPrompt({
 }: ChatPromptProps) {
   const [prompt, setPrompt] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-
+  const { conversations } = useConversations();
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   const isDisabled = disabled || isSubmitting;

@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import toast from "react-hot-toast";
-import { KeyRound, Loader2, Save, ShieldCheck } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
+import { KeyRound, Loader2, Save } from "lucide-react";
+import toast from "react-hot-toast";
 
 import FullScreenLoader from "@/components/common/FullScreenLoader";
+import Header from "@/components/common/Header";
 import ModelConfigurationForm from "@/components/my/ModelConfigurationForm";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -16,7 +16,6 @@ import {
   type ModelFormState,
   createEmptyModel,
 } from "@/lib/model-configuration-data";
-import Header from "@/components/common/Header";
 
 export default function ModelAPIKeys() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -28,7 +27,6 @@ export default function ModelAPIKeys() {
     React.useState<ModelFormState>(createEmptyModel);
 
   const [isLoading, setIsLoading] = React.useState(true);
-
   const [isSaving, setIsSaving] = React.useState(false);
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL;
@@ -42,6 +40,8 @@ export default function ModelAPIKeys() {
       setIsLoading(false);
       return;
     }
+
+    const controller = new AbortController();
 
     const loadConfigurations = async (): Promise<void> => {
       try {
@@ -57,6 +57,7 @@ export default function ModelAPIKeys() {
             Authorization: `Bearer ${token}`,
           },
           cache: "no-store",
+          signal: controller.signal,
         });
 
         const data = (await response.json().catch(() => null)) as
@@ -76,31 +77,47 @@ export default function ModelAPIKeys() {
           setChatConfig({
             provider: configurations.chat.provider,
             modelName: configurations.chat.model_name,
+            modelUrl: configurations.chat.model_url ?? "",
             apiKey: configurations.chat.api_key,
             showApiKey: false,
           });
+        } else {
+          setChatConfig(createEmptyModel());
         }
 
         if (configurations.agent) {
           setAgentConfig({
             provider: configurations.agent.provider,
             modelName: configurations.agent.model_name,
+            modelUrl: configurations.agent.model_url ?? "",
             apiKey: configurations.agent.api_key,
             showApiKey: false,
           });
+        } else {
+          setAgentConfig(createEmptyModel());
         }
       } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
         toast.error(
           error instanceof Error
             ? error.message
             : "Could not load model configurations.",
         );
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     };
 
     void loadConfigurations();
+
+    return () => {
+      controller.abort();
+    };
   }, [backendUrl, getToken, isLoaded, isSignedIn]);
 
   const handleSave = async (
@@ -108,33 +125,47 @@ export default function ModelAPIKeys() {
   ): Promise<void> => {
     event.preventDefault();
 
-    if (isSaving || !backendUrl) {
+    if (isSaving) {
       return;
     }
 
-    if (
-      !chatConfig.provider ||
-      !chatConfig.modelName ||
-      !chatConfig.apiKey.trim()
-    ) {
+    if (!backendUrl) {
+      toast.error("Backend API URL is not configured.");
+      return;
+    }
+
+    if (!isLoaded || !isSignedIn) {
+      toast.error("You must be signed in.");
+      return;
+    }
+
+    const chatProvider = chatConfig.provider.trim();
+    const chatModelName = chatConfig.modelName.trim();
+    const chatApiKey = chatConfig.apiKey.trim();
+    const chatModelUrl = chatConfig.modelUrl.trim();
+
+    if (!chatProvider || !chatModelName || !chatApiKey) {
       toast.error("Chat provider, model, and API key are required.");
       return;
     }
 
+    const agentProvider = agentConfig.provider.trim();
+    const agentModelName = agentConfig.modelName.trim();
+    const agentApiKey = agentConfig.apiKey.trim();
+    const agentModelUrl = agentConfig.modelUrl.trim();
+
     const agentHasAnyValue = Boolean(
-      agentConfig.provider ||
-      agentConfig.modelName ||
-      agentConfig.apiKey.trim(),
+      agentProvider || agentModelName || agentApiKey || agentModelUrl,
     );
 
     const agentIsComplete = Boolean(
-      agentConfig.provider &&
-      agentConfig.modelName &&
-      agentConfig.apiKey.trim(),
+      agentProvider && agentModelName && agentApiKey,
     );
 
     if (agentHasAnyValue && !agentIsComplete) {
-      toast.error("Complete all agent fields or leave them empty.");
+      toast.error(
+        "Complete the agent provider, model, and API key, or leave all agent fields empty.",
+      );
       return;
     }
 
@@ -157,15 +188,17 @@ export default function ModelAPIKeys() {
         },
         body: JSON.stringify({
           chat: {
-            provider: chatConfig.provider,
-            model_name: chatConfig.modelName,
-            api_key: chatConfig.apiKey.trim(),
+            provider: chatProvider,
+            model_name: chatModelName,
+            model_url: chatModelUrl || null,
+            api_key: chatApiKey,
           },
           agent: agentIsComplete
             ? {
-                provider: agentConfig.provider,
-                model_name: agentConfig.modelName,
-                api_key: agentConfig.apiKey.trim(),
+                provider: agentProvider,
+                model_name: agentModelName,
+                model_url: agentModelUrl || null,
+                api_key: agentApiKey,
               }
             : null,
         }),
@@ -206,10 +239,11 @@ export default function ModelAPIKeys() {
   return (
     <main className="min-h-screen bg-background">
       <Header />
-      <div className="mx-auto w-full max-w-6xl mt-10 md:mt-16 px-6 py-6">
-        <div className="mb-6 flex items-center justify-between">
+
+      <div className="mx-auto mt-10 w-full max-w-6xl px-6 py-6 md:mt-16">
+        <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <KeyRound className="size-6 text-primary" />
+            <KeyRound className="size-6 shrink-0 text-primary" />
 
             <div>
               <h1 className="text-2xl font-semibold">Models & API Keys</h1>
@@ -231,12 +265,13 @@ export default function ModelAPIKeys() {
             ) : (
               <Save className="size-4" />
             )}
-            Save
+
+            {isSaving ? "Saving..." : "Save"}
           </Button>
         </div>
 
         <form id="model-configuration-form" onSubmit={handleSave}>
-          <div className="grid gap-8 lg:gap-5 lg:grid-cols-2">
+          <div className="grid gap-8 lg:grid-cols-2 lg:gap-5">
             <ModelConfigurationForm
               type="chat"
               value={chatConfig}

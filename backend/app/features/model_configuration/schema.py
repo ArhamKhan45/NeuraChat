@@ -13,10 +13,18 @@ class ModelConfigurationCreate(BaseModel):
         min_length=1,
         max_length=100,
     )
+
     model_name: str = Field(
         min_length=1,
         max_length=255,
     )
+
+    model_url: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
+
     api_key: str = Field(
         min_length=1,
         max_length=1000,
@@ -42,6 +50,7 @@ class ModelConfigurationResponse(BaseModel):
     model_type: str
     provider: str
     model_name: str
+    model_url: str | None
     api_key: str
     created_at: datetime
     updated_at: datetime

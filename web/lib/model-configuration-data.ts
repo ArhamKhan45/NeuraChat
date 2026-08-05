@@ -1,12 +1,7 @@
-export interface Provider {
-  value: string;
-  label: string;
-  models: string[];
-}
-
 export interface ModelFormState {
   provider: string;
   modelName: string;
+  modelUrl: string;
   apiKey: string;
   showApiKey: boolean;
 }
@@ -14,9 +9,10 @@ export interface ModelFormState {
 export interface ModelConfigurationResponse {
   id: string;
   user_id: string;
-  model_type: "chat" | "agent";
+  model_type: string;
   provider: string;
   model_name: string;
+  model_url: string | null;
   api_key: string;
   created_at: string;
   updated_at: string;
@@ -31,48 +27,46 @@ export interface ApiErrorResponse {
   detail?: string | unknown;
 }
 
-export const PROVIDERS: Provider[] = [
+export interface ProviderConfiguration {
+  label: string;
+  value: string;
+  models: string[];
+}
+
+export const PROVIDERS: ProviderConfiguration[] = [
   {
-    value: "groq",
-    label: "Groq",
-    models: [
-      "llama-3.1-8b-instant",
-      "llama-3.3-70b-versatile",
-      "openai/gpt-oss-20b",
-      "openai/gpt-oss-120b",
-      "qwen/qwen3-32b",
-    ],
-  },
-  {
-    value: "nvidia",
-    label: "NVIDIA NIM",
-    models: [
-      "meta/llama-3.1-8b-instruct",
-      "meta/llama-3.3-70b-instruct",
-      "qwen/qwen3-32b",
-      "google/gemma-4-31b-it",
-    ],
-  },
-  {
-    value: "google",
-    label: "Google Gemini",
-    models: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
-  },
-  {
-    value: "openai",
     label: "OpenAI",
-    models: ["gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini"],
+    value: "openai",
+    models: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"],
   },
   {
-    value: "anthropic",
+    label: "Groq",
+    value: "groq",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+  },
+  {
+    label: "Google",
+    value: "google",
+    models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  },
+  {
     label: "Anthropic",
-    models: ["claude-sonnet-4", "claude-opus-4", "claude-3-5-haiku"],
+    value: "anthropic",
+    models: ["claude-sonnet-4", "claude-3-5-haiku-latest"],
+  },
+  {
+    label: "OpenAI Compatible",
+    value: "openai-compatible",
+    models: ["custom-model"],
   },
 ];
 
-export const createEmptyModel = (): ModelFormState => ({
-  provider: "",
-  modelName: "",
-  apiKey: "",
-  showApiKey: false,
-});
+export function createEmptyModel(): ModelFormState {
+  return {
+    provider: "",
+    modelName: "",
+    modelUrl: "",
+    apiKey: "",
+    showApiKey: false,
+  };
+}

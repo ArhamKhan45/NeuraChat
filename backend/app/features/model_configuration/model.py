@@ -60,6 +60,11 @@ class ModelConfiguration(Base):
         nullable=False,
     )
 
+    model_url: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     api_key: Mapped[str] = mapped_column(
         String(1000),
         nullable=False,

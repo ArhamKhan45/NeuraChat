@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useAuth } from "@clerk/nextjs";
 
 import ChatPrompt from "@/components/my/chat/ChatPrompt";
 import ChatMessages, {
@@ -12,14 +13,37 @@ interface ChatScreenProps {
   chatId?: string;
 }
 
+interface ApiChatMessage {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+interface SendMessageResponse {
+  user_message: ApiChatMessage;
+  assistant_message: ApiChatMessage;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export default function ChatScreen({
   initialMessages = [],
   chatId,
 }: ChatScreenProps) {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+
   const [messages, setMessages] =
     React.useState<ChatMessage[]>(initialMessages);
 
+  const [isLoadingMessages, setIsLoadingMessages] = React.useState(
+    initialMessages.length === 0,
+  );
+
   const [isGenerating, setIsGenerating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
@@ -27,7 +51,9 @@ export default function ChatScreen({
   React.useEffect(() => {
     const container = scrollRef.current;
 
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     container.scrollTo({
       top: container.scrollHeight,
@@ -36,69 +62,196 @@ export default function ChatScreen({
   }, [messages, isGenerating]);
 
   React.useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    if (!isSignedIn || !chatId) {
+      setMessages([]);
+      setIsLoadingMessages(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadMessages = async (): Promise<void> => {
+      setIsLoadingMessages(true);
+      setError(null);
+
+      try {
+        const token = await getToken();
+
+        if (!token) {
+          throw new Error("Authentication token was not found");
+        }
+
+        const response = await fetch(
+          `${API_BASE_URL}/conversations/${chatId}/messages`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(await getResponseError(response));
+        }
+
+        const data = (await response.json()) as ApiChatMessage[];
+
+        setMessages(data.map(mapApiMessageToChatMessage));
+      } catch (caughtError: unknown) {
+        if (
+          caughtError instanceof DOMException &&
+          caughtError.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Could not load messages",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingMessages(false);
+        }
+      }
+    };
+
+    void loadMessages();
+
+    return () => {
+      controller.abort();
+    };
+  }, [chatId, getToken, isLoaded, isSignedIn]);
+
+  React.useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
     };
   }, []);
 
-  const handleSubmit = async (prompt: string) => {
-    if (isGenerating) return;
+  const handleSubmit = async (prompt: string): Promise<void> => {
+    const content = prompt.trim();
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
+    if (!content || !chatId || !isLoaded || !isSignedIn || isGenerating) {
+      return;
+    }
+
+    const temporaryUserMessageId = crypto.randomUUID();
+
+    const temporaryUserMessage: ChatMessage = {
+      id: temporaryUserMessageId,
       role: "user",
-      content: prompt,
+      content,
     };
 
-    setMessages((currentMessages) => [...currentMessages, userMessage]);
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      temporaryUserMessage,
+    ]);
+
+    setIsGenerating(true);
+    setError(null);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      setIsGenerating(true);
+      const token = await getToken();
 
-      await waitForMockResponse(600, controller.signal);
+      if (!token) {
+        throw new Error("Authentication token was not found");
+      }
 
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: getMockAssistantResponse(prompt),
-      };
+      const response = await fetch(
+        `${API_BASE_URL}/conversations/${chatId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            content,
+          }),
+          signal: controller.signal,
+        },
+      );
 
-      setMessages((currentMessages) => [...currentMessages, assistantMessage]);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (!response.ok) {
+        throw new Error(await getResponseError(response));
+      }
+
+      const data = (await response.json()) as SendMessageResponse;
+
+      const savedUserMessage = mapApiMessageToChatMessage(data.user_message);
+
+      const assistantMessage = mapApiMessageToChatMessage(
+        data.assistant_message,
+      );
+
+      setMessages((currentMessages) => {
+        const messagesWithSavedUserMessage = currentMessages.map((message) =>
+          message.id === temporaryUserMessageId ? savedUserMessage : message,
+        );
+
+        return [...messagesWithSavedUserMessage, assistantMessage];
+      });
+    } catch (caughtError: unknown) {
+      if (
+        caughtError instanceof DOMException &&
+        caughtError.name === "AbortError"
+      ) {
+        setMessages((currentMessages) =>
+          currentMessages.filter(
+            (message) => message.id !== temporaryUserMessageId,
+          ),
+        );
+
         return;
       }
 
-      console.error("Failed to generate response:", error);
+      setMessages((currentMessages) =>
+        currentMessages.filter(
+          (message) => message.id !== temporaryUserMessageId,
+        ),
+      );
 
-      const errorMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content:
-          "Something went wrong while generating the response. Please try again.",
-      };
-
-      setMessages((currentMessages) => [...currentMessages, errorMessage]);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not send message",
+      );
     } finally {
       setIsGenerating(false);
       abortControllerRef.current = null;
     }
   };
 
-  const handleStop = () => {
+  const handleStop = (): void => {
     abortControllerRef.current?.abort();
   };
-  console.log(messages);
+
   return (
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4"
       >
-        <ChatMessages messages={messages} />
+        {isLoadingMessages ? (
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 py-6 text-sm text-muted-foreground">
+            <span className="size-2 animate-pulse rounded-full bg-current" />
+            Loading messages...
+          </div>
+        ) : (
+          <ChatMessages messages={messages} />
+        )}
 
         {isGenerating ? (
           <div className="w-full py-4">
@@ -108,6 +261,12 @@ export default function ChatScreen({
                 NeuroChat is thinking...
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="mx-auto w-full max-w-3xl py-3 text-sm text-destructive">
+            {error}
           </div>
         ) : null}
       </div>
@@ -123,155 +282,22 @@ export default function ChatScreen({
   );
 }
 
-function waitForMockResponse(
-  delay: number,
-  signal: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(resolve, delay);
+function mapApiMessageToChatMessage(message: ApiChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+  };
+}
 
-    const handleAbort = () => {
-      window.clearTimeout(timeout);
-      reject(new DOMException("Request aborted", "AbortError"));
+async function getResponseError(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as {
+      detail?: string;
     };
 
-    if (signal.aborted) {
-      handleAbort();
-      return;
-    }
-
-    signal.addEventListener("abort", handleAbort, {
-      once: true,
-    });
-  });
-}
-
-function getMockAssistantResponse(prompt: string): string {
-  const normalizedPrompt = prompt.trim().toLowerCase();
-
-  if (
-    normalizedPrompt === "hi" ||
-    normalizedPrompt === "hello" ||
-    normalizedPrompt === "hey"
-  ) {
-    return "Hi! How can I help you today?";
+    return data.detail ?? `Request failed with status ${response.status}`;
+  } catch {
+    return `Request failed with status ${response.status}`;
   }
-
-  if (
-    normalizedPrompt.includes("code block") ||
-    normalizedPrompt.includes("test code")
-  ) {
-    return `Here is a test response containing normal text and multiple code blocks.
-
-First, a React component:
-
-\`\`\`tsx
-interface ButtonProps {
-  title: string;
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-export default function CustomButton({
-  title,
-  onClick,
-  disabled = false,
-}: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-lg bg-primary px-4 py-2 text-primary-foreground"
-    >
-      {title}
-    </button>
-  );
-}
-\`\`\`
-
-Now a Python example:
-
-\`\`\`python
-def greet(name: str) -> str:
-    return f"Hello, {name}!"
-
-print(greet("Arham"))
-\`\`\`
-
-And a JSON example:
-
-\`\`\`json
-{
-  "name": "NeuroChat",
-  "status": "working"
-}
-\`\`\`
-
-Each block should display its language and copy button.`;
-  }
-
-  if (
-    normalizedPrompt.includes("react") ||
-    normalizedPrompt.includes("component") ||
-    normalizedPrompt.includes("button")
-  ) {
-    return `You can create a reusable React component by defining typed props and passing the required values from the parent.
-
-\`\`\`tsx
-interface ButtonProps {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-export default function CustomButton({
-  label,
-  onClick,
-  disabled = false,
-}: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {label}
-    </button>
-  );
-}
-\`\`\`
-
-You can reuse this component anywhere in your application by passing a label and click handler.`;
-  }
-
-  if (
-    normalizedPrompt.includes("python") ||
-    normalizedPrompt.includes("fastapi")
-  ) {
-    return `Here is a simple FastAPI route:
-
-\`\`\`python
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    return {"status": "healthy"}
-\`\`\`
-
-Run the server with:
-
-\`\`\`bash
-uvicorn main:app --reload
-\`\`\``;
-  }
-
-  return `I understand your question.
-
-This is currently a mock response used to test the chat interface. Type **"test code block"** to verify React, Python, and JSON code block rendering.
-
-Later, replace this mock function with the response returned by your FastAPI chat endpoint.`;
 }
