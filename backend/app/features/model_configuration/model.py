@@ -1,14 +1,13 @@
-"""SQLAlchemy model for conversation messages."""
+"""Database model for user model configurations."""
 
 from datetime import datetime
 import uuid
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     ForeignKey,
     String,
-    Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -17,15 +16,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.helpers import Base
 
 
-class ChatMessageModel(Base):
-    """Store user and assistant messages inside conversations."""
+class ModelConfiguration(Base):
+    """Store chat and agent model settings for a user."""
 
-    __tablename__ = "chat_messages"
+    __tablename__ = "model_configurations"
 
     __table_args__ = (
-        CheckConstraint(
-            "role IN ('user', 'assistant')",
-            name="ck_chat_messages_role",
+        UniqueConstraint(
+            "user_id",
+            "model_type",
+            name="uq_model_configuration_user_type",
         ),
     )
 
@@ -33,16 +33,6 @@ class ChatMessageModel(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-    )
-
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey(
-            "conversations.id",
-            ondelete="CASCADE",
-        ),
-        nullable=False,
-        index=True,
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -55,13 +45,28 @@ class ChatMessageModel(Base):
         index=True,
     )
 
-    role: Mapped[str] = mapped_column(
-        String(20),
+    model_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
     )
 
-    content: Mapped[str] = mapped_column(
-        Text,
+    provider: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    model_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    model_url: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    api_key: Mapped[str] = mapped_column(
+        String(1000),
         nullable=False,
     )
 

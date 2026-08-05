@@ -1,96 +1,326 @@
 "use client";
 
 import * as React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 import ChatPrompt from "@/components/my/chat/ChatPrompt";
 import ChatMessages, {
   type ChatMessage,
 } from "@/components/my/chat/ChatMessages";
+import { useConversations } from "@/hooks/useConversations";
 
 interface ChatScreenProps {
   initialMessages?: ChatMessage[];
   chatId?: string;
 }
 
+interface ApiChatMessage {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+interface SendMessageResponse {
+  user_message: ApiChatMessage;
+  assistant_message: ApiChatMessage;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/*
+ * Stable reference.
+ * This is not recreated on every component render.
+ */
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
 export default function ChatScreen({
-  initialMessages = [],
+  initialMessages = EMPTY_MESSAGES,
   chatId,
 }: ChatScreenProps) {
-  const [messages, setMessages] =
-    React.useState<ChatMessage[]>(initialMessages);
+  const router = useRouter();
+
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+
+  const { createNewConversation, isCreating, removeConversation } =
+    useConversations();
+
+  const [activeChatId, setActiveChatId] = React.useState<string | undefined>(
+    chatId,
+  );
+
+  const [messages, setMessages] = React.useState<ChatMessage[]>(
+    () => initialMessages,
+  );
+
+  const [isLoadingMessages, setIsLoadingMessages] = React.useState(
+    Boolean(chatId) && initialMessages.length === 0,
+  );
 
   const [isGenerating, setIsGenerating] = React.useState(false);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
+  /*
+   * Keep activeChatId synchronized when the route changes.
+   */
+  React.useEffect(() => {
+    setActiveChatId(chatId);
+  }, [chatId]);
+
+  /*
+   * Scroll to the latest message.
+   */
   React.useEffect(() => {
     const container = scrollRef.current;
 
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     container.scrollTo({
       top: container.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, isGenerating]);
+  }, [messages, isGenerating, isCreating]);
 
+  /*
+   * Load existing messages only when chatId exists.
+   *
+   * initialMessages is intentionally not included in the dependencies.
+   * It is used only as the initial state value.
+   */
+  React.useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    if (!isSignedIn) {
+      setMessages([]);
+      setIsLoadingMessages(false);
+      setError(null);
+      return;
+    }
+
+    /*
+     * New-chat page: there is nothing to fetch yet.
+     */
+    if (!chatId) {
+      setIsLoadingMessages(false);
+      setError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadMessages = async (): Promise<void> => {
+      setIsLoadingMessages(true);
+      setError(null);
+
+      try {
+        const token = await getToken();
+
+        if (!token) {
+          throw new Error("Authentication token was not found");
+        }
+
+        const response = await fetch(
+          `${API_BASE_URL}/conversations/${chatId}/messages`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(await getResponseError(response));
+        }
+
+        const data = (await response.json()) as ApiChatMessage[];
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setMessages(data.map(mapApiMessageToChatMessage));
+      } catch (caughtError: unknown) {
+        if (isAbortError(caughtError)) {
+          return;
+        }
+
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Could not load messages",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingMessages(false);
+        }
+      }
+    };
+
+    void loadMessages();
+
+    return () => {
+      controller.abort();
+    };
+  }, [chatId, getToken, isLoaded, isSignedIn]);
+
+  /*
+   * Abort message generation when the component unmounts.
+   */
   React.useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
     };
   }, []);
 
-  const handleSubmit = async (prompt: string) => {
-    if (isGenerating) return;
+  const handleSubmit = async (prompt: string): Promise<void> => {
+    const content = prompt.trim();
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
+    if (!content || !isLoaded || !isSignedIn || isGenerating || isCreating) {
+      return;
+    }
+
+    const temporaryUserMessageId = crypto.randomUUID();
+
+    const temporaryUserMessage: ChatMessage = {
+      id: temporaryUserMessageId,
       role: "user",
-      content: prompt,
+      content,
     };
 
-    setMessages((currentMessages) => [...currentMessages, userMessage]);
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      temporaryUserMessage,
+    ]);
+
+    setIsGenerating(true);
+    setError(null);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    let createdConversationId: string | null = null;
+
     try {
-      setIsGenerating(true);
+      let conversationId = activeChatId;
 
-      await waitForMockResponse(600, controller.signal);
+      /*
+       * Create a conversation before sending the first message.
+       */
+      if (!conversationId) {
+        const newConversation = await createNewConversation(
+          createConversationTitle(content),
+        );
 
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: getMockAssistantResponse(prompt),
-      };
+        if (!newConversation) {
+          throw new Error("Could not create a new conversation");
+        }
 
-      setMessages((currentMessages) => [...currentMessages, assistantMessage]);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
+        conversationId = newConversation.id;
+        createdConversationId = newConversation.id;
+
+        setActiveChatId(conversationId);
+
+        /*
+         * Change this path if your conversation route differs.
+         */
+        window.history.replaceState(null, "", `/chat/${conversationId}`);
+      }
+
+      if (controller.signal.aborted) {
+        throw new Error("Message send aborted");
+      }
+
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error("Authentication token was not found");
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/conversations/${conversationId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            content,
+          }),
+          signal: controller.signal,
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(await getResponseError(response));
+      }
+
+      const data = (await response.json()) as SendMessageResponse;
+
+      const savedUserMessage = mapApiMessageToChatMessage(data.user_message);
+
+      const assistantMessage = mapApiMessageToChatMessage(
+        data.assistant_message,
+      );
+
+      setMessages((currentMessages) => {
+        const updatedMessages = currentMessages.map((message) =>
+          message.id === temporaryUserMessageId ? savedUserMessage : message,
+        );
+
+        return [...updatedMessages, assistantMessage];
+      });
+
+      router.refresh();
+    } catch (caughtError: unknown) {
+      setMessages((currentMessages) =>
+        currentMessages.filter(
+          (message) => message.id !== temporaryUserMessageId,
+        ),
+      );
+
+      if (createdConversationId) {
+        await removeConversation(createdConversationId);
+        createdConversationId = null;
+        setActiveChatId(undefined);
+        window.history.replaceState(null, "", "/chat");
+      }
+
+      if (isAbortError(caughtError)) {
         return;
       }
 
-      console.error("Failed to generate response:", error);
-
-      const errorMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content:
-          "Something went wrong while generating the response. Please try again.",
-      };
-
-      setMessages((currentMessages) => [...currentMessages, errorMessage]);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not send message",
+      );
     } finally {
       setIsGenerating(false);
       abortControllerRef.current = null;
     }
   };
 
-  const handleStop = () => {
+  const handleStop = (): void => {
     abortControllerRef.current?.abort();
   };
+
+  const promptIsBusy = isGenerating || isCreating;
 
   return (
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -98,16 +328,32 @@ export default function ChatScreen({
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4"
       >
-        <ChatMessages messages={messages} />
+        {isLoadingMessages ? (
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 py-6 text-sm text-muted-foreground">
+            <span className="size-2 animate-pulse rounded-full bg-current" />
+            Loading messages...
+          </div>
+        ) : (
+          <ChatMessages messages={messages} />
+        )}
 
-        {isGenerating ? (
+        {promptIsBusy ? (
           <div className="w-full py-4">
             <div className="mx-auto w-full max-w-3xl">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="size-2 animate-pulse rounded-full bg-current" />
-                NeuroChat is thinking...
+
+                {isCreating
+                  ? "Creating conversation..."
+                  : "NeuroChat is thinking..."}
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="mx-auto w-full max-w-3xl py-3 text-sm text-destructive">
+            {error}
           </div>
         ) : null}
       </div>
@@ -116,162 +362,53 @@ export default function ChatScreen({
         <ChatPrompt
           onSubmit={handleSubmit}
           onStop={handleStop}
-          isGenerating={isGenerating}
+          isGenerating={promptIsBusy}
         />
       </div>
     </section>
   );
 }
 
-function waitForMockResponse(
-  delay: number,
-  signal: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(resolve, delay);
+function mapApiMessageToChatMessage(message: ApiChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+  };
+}
 
-    const handleAbort = () => {
-      window.clearTimeout(timeout);
-      reject(new DOMException("Request aborted", "AbortError"));
+function createConversationTitle(content: string): string {
+  const normalizedContent = content.replace(/\s+/g, " ").trim();
+
+  const maximumLength = 50;
+
+  if (normalizedContent.length <= maximumLength) {
+    return normalizedContent;
+  }
+
+  return `${normalizedContent.slice(0, maximumLength)}...`;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function getResponseError(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as {
+      detail?: unknown;
     };
 
-    if (signal.aborted) {
-      handleAbort();
-      return;
+    if (typeof data.detail === "string") {
+      return data.detail;
     }
 
-    signal.addEventListener("abort", handleAbort, {
-      once: true,
-    });
-  });
-}
+    if (data.detail !== undefined) {
+      return JSON.stringify(data.detail);
+    }
 
-function getMockAssistantResponse(prompt: string): string {
-  const normalizedPrompt = prompt.trim().toLowerCase();
-
-  if (
-    normalizedPrompt === "hi" ||
-    normalizedPrompt === "hello" ||
-    normalizedPrompt === "hey"
-  ) {
-    return "Hi! How can I help you today?";
+    return `Request failed with status ${response.status}`;
+  } catch {
+    return `Request failed with status ${response.status}`;
   }
-
-  if (
-    normalizedPrompt.includes("code block") ||
-    normalizedPrompt.includes("test code")
-  ) {
-    return `Here is a test response containing normal text and multiple code blocks.
-
-First, a React component:
-
-\`\`\`tsx
-interface ButtonProps {
-  title: string;
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-export default function CustomButton({
-  title,
-  onClick,
-  disabled = false,
-}: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-lg bg-primary px-4 py-2 text-primary-foreground"
-    >
-      {title}
-    </button>
-  );
-}
-\`\`\`
-
-Now a Python example:
-
-\`\`\`python
-def greet(name: str) -> str:
-    return f"Hello, {name}!"
-
-print(greet("Arham"))
-\`\`\`
-
-And a JSON example:
-
-\`\`\`json
-{
-  "name": "NeuroChat",
-  "status": "working"
-}
-\`\`\`
-
-Each block should display its language and copy button.`;
-  }
-
-  if (
-    normalizedPrompt.includes("react") ||
-    normalizedPrompt.includes("component") ||
-    normalizedPrompt.includes("button")
-  ) {
-    return `You can create a reusable React component by defining typed props and passing the required values from the parent.
-
-\`\`\`tsx
-interface ButtonProps {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-export default function CustomButton({
-  label,
-  onClick,
-  disabled = false,
-}: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {label}
-    </button>
-  );
-}
-\`\`\`
-
-You can reuse this component anywhere in your application by passing a label and click handler.`;
-  }
-
-  if (
-    normalizedPrompt.includes("python") ||
-    normalizedPrompt.includes("fastapi")
-  ) {
-    return `Here is a simple FastAPI route:
-
-\`\`\`python
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    return {"status": "healthy"}
-\`\`\`
-
-Run the server with:
-
-\`\`\`bash
-uvicorn main:app --reload
-\`\`\``;
-  }
-
-  return `I understand your question.
-
-This is currently a mock response used to test the chat interface. Type **"test code block"** to verify React, Python, and JSON code block rendering.
-
-Later, replace this mock function with the response returned by your FastAPI chat endpoint.`;
 }
