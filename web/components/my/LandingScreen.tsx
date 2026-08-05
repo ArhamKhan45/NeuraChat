@@ -9,6 +9,7 @@ import { Menu } from "lucide-react";
 import ChatScreen from "@/components/my/chat/ChatScreen";
 
 export default function LandingPage({ id }: { id?: string }) {
+  console.log(id);
   return (
     <SidebarProvider
       style={

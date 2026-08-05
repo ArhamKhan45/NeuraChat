@@ -148,6 +148,7 @@ async def send_conversation_message(
                 detail="Message content cannot be empty",
             )
 
+        print(conversation.id)
         user_message = ChatMessageModel(
             conversation_id=conversation.id,
             user_id=conversation.user_id,

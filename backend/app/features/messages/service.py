@@ -2,6 +2,7 @@
 
 from typing import Any
 import logging
+import re
 
 from sqlalchemy import select
 
@@ -92,7 +93,8 @@ async def generate_assistant_reply(
     )
 
     try:
-        return get_final_response(supervisor_result)
+        response = get_final_response(supervisor_result)
+        return enforce_word_limit(response, message)
 
     except Exception as error:
         logging.exception("Error extracting final response from supervisor_result: %r", error)
@@ -141,3 +143,31 @@ def get_final_response(
             return "\n".join(text_parts)
 
     return str(content)
+
+
+def enforce_word_limit(
+    response: str,
+    user_message: str,
+) -> str:
+    """Enforce explicit word count requests found in the user's message."""
+
+    normalized_message = user_message.strip().lower()
+    match = re.search(
+        r"\b(?:just\s+|in\s+|up\s+to\s+|at\s+most\s+|no\s+more\s+than\s+)?(\d+)\s+words?\b",
+        normalized_message,
+    )
+
+    if not match:
+        return response
+
+    try:
+        limit = int(match.group(1))
+    except ValueError:
+        return response
+
+    words = response.strip().split()
+
+    if len(words) <= limit:
+        return response
+
+    return " ".join(words[:limit])
