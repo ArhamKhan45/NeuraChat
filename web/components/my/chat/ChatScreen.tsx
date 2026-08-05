@@ -29,8 +29,6 @@ interface SendMessageResponse {
   assistant_message: ApiChatMessage;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 /*
  * Stable reference.
  * This is not recreated on every component render.
@@ -132,7 +130,7 @@ export default function ChatScreen({
         }
 
         const response = await fetch(
-          `${API_BASE_URL}/conversations/${chatId}/messages`,
+          `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/conversations/${chatId}/messages`,
           {
             method: "GET",
             headers: {
@@ -252,7 +250,7 @@ export default function ChatScreen({
       }
 
       const response = await fetch(
-        `${API_BASE_URL}/conversations/${conversationId}/messages`,
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/conversations/${conversationId}/messages`,
         {
           method: "POST",
           headers: {
