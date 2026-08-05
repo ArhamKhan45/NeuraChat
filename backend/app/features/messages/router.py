@@ -12,8 +12,6 @@ Endpoints:
         save the assistant message, and return both.
 """
 
-"""Routes for sending and reading chat messages."""
-
 import uuid
 
 from fastapi import (
@@ -24,16 +22,14 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.features.conversation.model import ConversationModel
 from app.features.messages.model import ChatMessageModel
 from app.features.messages.schema import (
     ChatMessageResponse,
     SendMessageRequest,
     SendMessageResponse,
 )
-from app.features.messages.service import (
-    generate_assistant_reply,
-)
-from app.features.conversation.model import ConversationModel
+from app.features.messages.service import generate_assistant_reply
 from app.features.user.model import UserModel
 from app.utils.dependency import (
     DatabaseSession,
@@ -99,8 +95,7 @@ async def get_conversation_messages(
         result = await db.execute(
             select(ChatMessageModel)
             .where(
-                ChatMessageModel.conversation_id
-                == conversation.id,
+                ChatMessageModel.conversation_id == conversation.id,
             )
             .order_by(
                 ChatMessageModel.created_at.asc(),
@@ -146,6 +141,12 @@ async def send_conversation_message(
 
         content = message_data.content.strip()
 
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Message content cannot be empty",
+            )
+
         user_message = ChatMessageModel(
             conversation_id=conversation.id,
             user_id=conversation.user_id,
@@ -157,6 +158,8 @@ async def send_conversation_message(
 
         assistant_content = await generate_assistant_reply(
             message=content,
+            clerk_id=clerk_id,
+            db=db,
         )
 
         assistant_message = ChatMessageModel(
@@ -193,6 +196,19 @@ async def send_conversation_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save chat messages",
+        ) from error
+
+    except ValueError as error:
+        await db.rollback()
+
+        print(
+            "MODEL CONFIGURATION ERROR:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
         ) from error
 
     except Exception as error:
