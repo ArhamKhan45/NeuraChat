@@ -112,7 +112,13 @@ def get_final_response(
             "The supervisor did not return a response"
         )
 
-    content = messages[-1].content
+    last_message = messages[-1]
+    content = None
+
+    if isinstance(last_message, dict):
+        content = last_message.get("content") or last_message.get("text")
+    else:
+        content = getattr(last_message, "content", None) or getattr(last_message, "text", None)
 
     if isinstance(content, str):
         return content
